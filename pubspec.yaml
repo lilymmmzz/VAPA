@@ -1,0 +1,66 @@
+name: vapa
+description: Voice Activated Personal Assistant Application
+
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Firebase
+  firebase_core: ^3.6.0
+  firebase_auth: ^5.3.1
+  cloud_firestore: ^5.4.4
+
+  # Voice & Speech
+  speech_to_text: ^7.0.0
+  flutter_tts: ^4.0.2
+  vosk_flutter: ^0.3.31
+
+  # State Management
+  provider: ^6.1.1
+
+  # Notifications
+  flutter_local_notifications: ^17.2.4
+
+  # HTTP
+  http: any
+
+  # Utilities
+  uuid: ^4.2.2
+  intl: ^0.19.0
+  cupertino_icons: ^1.0.6
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  path_provider: ^2.1.5
+
+dependency_overrides:
+  permission_handler_android: ^13.0.0
+  permission_handler: ^12.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/models/vosk-model-small-en-us-0.15.zip
+    - assets/models/vosk-model-small-en-us-0.15/README
+    - assets/models/vosk-model-small-en-us-0.15/am/final.mdl
+    - assets/models/vosk-model-small-en-us-0.15/conf/mfcc.conf
+    - assets/models/vosk-model-small-en-us-0.15/conf/model.conf
+    - assets/models/vosk-model-small-en-us-0.15/graph/disambig_tid.int
+    - assets/models/vosk-model-small-en-us-0.15/graph/Gr.fst
+    - assets/models/vosk-model-small-en-us-0.15/graph/HCLr.fst
+    - assets/models/vosk-model-small-en-us-0.15/graph/phones/word_boundary.int
+    - assets/models/vosk-model-small-en-us-0.15/ivector/final.dubm
+    - assets/models/vosk-model-small-en-us-0.15/ivector/final.ie
+    - assets/models/vosk-model-small-en-us-0.15/ivector/final.mat
+    - assets/models/vosk-model-small-en-us-0.15/ivector/global_cmvn.stats
+    - assets/models/vosk-model-small-en-us-0.15/ivector/online_cmvn.conf
+    - assets/models/vosk-model-small-en-us-0.15/ivector/splice.conf

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "725556233760",
+    "project_id": "vapa-app-7f59b",
+    "storage_bucket": "vapa-app-7f59b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:725556233760:android:59f84766e2a3abb2375e45",
+        "android_client_info": {
+          "package_name": "com.example.vapa"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB9vICSd8Y3EXw9PQYTL5JgohXDYhBcXEY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

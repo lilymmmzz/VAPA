@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base href="/">
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="Voice Activated Personal Assistant">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="VAPA">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+  <link rel="icon" type="image/png" href="favicon.png"/>
+  <title>VAPA</title>
+  <link rel="manifest" href="manifest.json">
+  <style>
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      position: fixed;
+      width: 100%;
+      -webkit-overflow-scrolling: touch;
+    }
+  </style>
+
+  <!--
+    IMPORTANT: All VAPA JavaScript MUST be in <head> as a synchronous script.
+    If placed in <body> with async, Flutter loads before the functions exist
+    and throws: "startSpeechRecognition is not a function"
+  -->
+  <script>
+    // ─── Browser Detection ──────────────────────────────────────────────────
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+    const isEdge   = /Edg\//.test(navigator.userAgent);
+    console.log('[VAPA] Browser: ' + (isSafari ? 'Safari' : isEdge ? 'Edge' : 'Chrome'));
+
+    // ─── Mic Permission Helper ──────────────────────────────────────────────
+    async function requestMicPermission() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach(t => t.stop());
+        console.log('[VAPA] Mic permission granted');
+        return true;
+      } catch (e) {
+        console.error('[VAPA] Mic denied:', e);
+        return false;
+      }
+    }
+
+    // ─── Native Browser TTS ─────────────────────────────────────────────────
+    let _currentUtterance = null;
+
+    window.nativeSpeak = function(text, rate, pitch, onDone) {
+      if (!window.speechSynthesis) { onDone && onDone(); return; }
+      window.speechSynthesis.cancel();
+
+      const utter        = new SpeechSynthesisUtterance(text);
+      utter.rate         = rate  || 0.95;
+      utter.pitch        = pitch || 0.85;
+      utter.lang         = 'en-GB';
+
+      // Voice priority for British Male
+      const voices   = window.speechSynthesis.getVoices();
+      const preferred =
+        voices.find(v => v.name === 'Google UK English Male') ||
+        voices.find(v => v.name === 'Daniel') ||
+        voices.find(v => v.name === 'Microsoft George - English (United Kingdom)') ||
+        voices.find(v => v.name === 'Microsoft Richard - English (United Kingdom)') ||
+        voices.find(v => v.lang === 'en-GB') ||
+        voices.find(v => v.lang.startsWith('en'));
+      if (preferred) utter.voice = preferred;
+
+      utter.onend   = () => { _currentUtterance = null; onDone && onDone(); };
+      utter.onerror = () => { _currentUtterance = null; onDone && onDone(); };
+      _currentUtterance = utter;
+      window.speechSynthesis.speak(utter);
+      console.log('[VAPA TTS] Speaking: ' + text.substring(0, 50));
+    };
+
+    window.nativeStop = function() {
+      if (window.speechSynthesis) window.speechSynthesis.cancel();
+      _currentUtterance = null;
+    };
+
+    // Preload voices (they load async on some browsers)
+    if (window.speechSynthesis) {
+      window.speechSynthesis.onvoiceschanged = function() {
+        window.speechSynthesis.getVoices();
+        console.log('[VAPA TTS] Voices loaded: ' + window.speechSynthesis.getVoices().length);
+      };
+    }
+
+    // ─── Continuous Speech Recognition ─────────────────────────────────────
+    let _recognition   = null;
+    let _onResultCb    = null;
+    let _onErrorCb     = null;
+    let _isRunning     = false;
+    let _shouldRestart = false;
+
+    window.startSpeechRecognition = async function(onResult, onError) {
+      console.log('[VAPA STT] startSpeechRecognition called');
+
+      if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+        onError('Speech recognition not supported. Please use Chrome.');
+        return null;
+      }
+
+      if (isEdge || isSafari) {
+        const granted = await requestMicPermission();
+        if (!granted) {
+          onError('Microphone permission denied. Please allow mic access.');
+          return null;
+        }
+      }
+
+      _onResultCb = onResult;
+      _onErrorCb  = onError;
+      _createAndStart();
+      return { __vapaHandle: true };
+    };
+
+    function _createAndStart() {
+      if (_isRunning) {
+        console.log('[VAPA STT] Already running, skipping start');
+        return;
+      }
+
+      const SR     = window.SpeechRecognition || window.webkitSpeechRecognition;
+      _recognition = new SR();
+
+      _recognition.continuous      = true;
+      _recognition.interimResults  = true;
+      _recognition.lang            = 'en-US';
+      _recognition.maxAlternatives = 1;
+
+      _recognition.onstart = () => {
+        _isRunning = true;
+        console.log('[VAPA STT] Started');
+      };
+
+      _recognition.onresult = (event) => {
+        let transcript = '';
+        let isFinal    = false;
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          transcript += event.results[i][0].transcript;
+          if (event.results[i].isFinal) isFinal = true;
+        }
+        if (transcript.trim()) {
+          console.log('[VAPA STT] ' + (isFinal ? 'FINAL' : 'partial') + ': ' + transcript);
+          _onResultCb && _onResultCb(transcript, isFinal);
+        }
+      };
+
+      _recognition.onerror = (event) => {
+        console.error('[VAPA STT] Error:', event.error);
+        _isRunning = false;
+        if (event.error === 'no-speech') {
+          // Silent restart — no-speech is normal
+          setTimeout(_createAndStart, 100);
+        } else {
+          const errorMap = {
+            'not-allowed'        : 'Microphone access denied.',
+            'network'            : 'Network error. Check your connection.',
+            'audio-capture'      : 'No microphone found.',
+            'service-not-allowed': 'Speech service blocked. Use HTTPS.',
+          };
+          _onErrorCb && _onErrorCb(errorMap[event.error] || event.error);
+        }
+      };
+
+      _recognition.onend = () => {
+        _isRunning = false;
+        console.log('[VAPA STT] Ended');
+        if (_shouldRestart) {
+          _shouldRestart = false;
+          setTimeout(_createAndStart, 150);
+        }
+      };
+
+      try {
+        _recognition.start();
+        console.log('[VAPA STT] start() called');
+      } catch(e) {
+        _isRunning = false;
+        console.error('[VAPA STT] Start error:', e);
+        _onErrorCb && _onErrorCb('Could not start mic: ' + e.message);
+      }
+    }
+
+    window.pauseSpeechRecognition = function() {
+      console.log('[VAPA STT] Pausing for TTS');
+      _shouldRestart = true;
+      if (_recognition && _isRunning) {
+        try { _recognition.stop(); } catch(e) {}
+      }
+    };
+
+    window.resumeSpeechRecognition = function() {
+      console.log('[VAPA STT] Resuming after TTS');
+      _shouldRestart = false;
+      if (!_isRunning) {
+        setTimeout(_createAndStart, 150);
+      }
+    };
+
+    window.stopSpeechRecognition = function(handle) {
+      console.log('[VAPA STT] Fully stopped');
+      _shouldRestart = false;
+      _onResultCb    = null;
+      _onErrorCb     = null;
+      if (_recognition && _isRunning) {
+        try { _recognition.stop(); } catch(e) {}
+      }
+      _recognition = null;
+      _isRunning   = false;
+    };
+
+    // ─── Safari AudioContext Unlock ─────────────────────────────────────────
+    window._audioUnlocked = false;
+    function unlockAudio() {
+      if (window._audioUnlocked) return;
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) {
+        const ctx = new AC();
+        const buf = ctx.createBuffer(1, 1, 22050);
+        const src = ctx.createBufferSource();
+        src.buffer = buf;
+        src.connect(ctx.destination);
+        src.start(0);
+        ctx.resume().then(() => {
+          window._audioUnlocked = true;
+          console.log('[VAPA] Audio context unlocked');
+        });
+      }
+    }
+    document.addEventListener('touchstart', unlockAudio, { once: true });
+    document.addEventListener('click',      unlockAudio, { once: true });
+    document.addEventListener('keydown',    unlockAudio, { once: true });
+
+    console.log('[VAPA] All JS functions registered successfully');
+  </script>
+</head>
+<body>
+  <!-- Bootstrap loads AFTER all JS is defined in <head> -->
+  <script src="flutter_bootstrap.js?v=9"></script>
+</body>
+</html>

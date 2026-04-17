@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base href="/">
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="Voice Activated Personal Assistant">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="VAPA">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+  <link rel="icon" type="image/png" href="favicon.png"/>
+  <title>vapa</title>
+  <link rel="manifest" href="manifest.json">
+</head>
+<body>
+  <script>
+    // Web Speech API for VAPA
+    window.startSpeechRecognition = function(onResult, onError) {
+      if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+        onError('Speech recognition not supported in this browser');
+        return null;
+      }
+
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      const recognition = new SpeechRecognition();
+      
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+
+      recognition.onresult = function(event) {
+        let transcript = '';
+        let isFinal = false;
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          transcript += event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            isFinal = true;
+          }
+        }
+        onResult(transcript, isFinal);
+      };
+
+      recognition.onerror = function(event) {
+        onError(event.error);
+      };
+
+      recognition.start();
+      return recognition;
+    };
+
+    window.stopSpeechRecognition = function(recognition) {
+      if (recognition) {
+        recognition.stop();
+      }
+    };
+  </script>
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>
