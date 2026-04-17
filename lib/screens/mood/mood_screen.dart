@@ -24,13 +24,13 @@ class _MoodScreenState extends State<MoodScreen> {
   }
 
 Future<void> _initTts() async {
-  await _flutterTts.setLanguage('en-US');
-  await _flutterTts.setSpeechRate(0.42);
+  await _flutterTts.setLanguage('en-Uk');
+  await _flutterTts.setSpeechRate(0.85);
   await _flutterTts.setVolume(1.0);
   await _flutterTts.setPitch(1.0);
 
   await _flutterTts.setVoice({
-    'name': 'en-us-x-iog-network',
+    'name': 'en-uk-x-iog-network',
     'locale': 'en-US',
   });
 }

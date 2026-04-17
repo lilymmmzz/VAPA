@@ -31,11 +31,11 @@ class _MoodChatScreenState extends State<MoodChatScreen> {
   }
 
   Future<void> _initTts() async {
-    await _flutterTts.setLanguage('en-US');
-    await _flutterTts.setSpeechRate(0.42);
-    await _flutterTts.setVolume(1.0);
+    await _flutterTts.setLanguage('en-Uk');
+    await _flutterTts.setSpeechRate(0.95);
+    await _flutterTts.setVolume(4.0);
     await _flutterTts.setPitch(1.0);
-    await _flutterTts.setVoice({'name': 'en-us-x-iog-network', 'locale': 'en-US'});
+    await _flutterTts.setVoice({'name': 'en-uk-x-iog-network', 'locale': 'en-Uk'});
   }
 
   Future<void> _speak(String text) async {
@@ -59,7 +59,7 @@ class _MoodChatScreenState extends State<MoodChatScreen> {
     );
 
     final openingMessage =
-        'Hi! I can see you\'re feeling $moodLabel $moodEmoji today. '
+        'Hi! I can see you\'re feeling $moodLabel today. '
         'I\'m VAPA, your personal mood companion. '
         'Would you like to talk about how you\'re feeling?';
 
