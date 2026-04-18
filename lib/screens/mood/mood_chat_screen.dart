@@ -9,7 +9,6 @@ import '../../services/ai_provider.dart';
 class MoodChatScreen extends StatefulWidget {
   final int initialMood;
   const MoodChatScreen({super.key, required this.initialMood});
-
   @override
   State<MoodChatScreen> createState() => _MoodChatScreenState();
 }
@@ -31,11 +30,11 @@ class _MoodChatScreenState extends State<MoodChatScreen> {
   }
 
   Future<void> _initTts() async {
-    await _flutterTts.setLanguage('en-Uk');
+    await _flutterTts.setLanguage('en-UK');
     await _flutterTts.setSpeechRate(0.95);
     await _flutterTts.setVolume(4.0);
     await _flutterTts.setPitch(1.0);
-    await _flutterTts.setVoice({'name': 'en-uk-x-iog-network', 'locale': 'en-Uk'});
+    await _flutterTts.setVoice({'name': 'en-uk-x-iog-network', 'locale': 'en-UK'});
   }
 
   Future<void> _speak(String text) async {
@@ -69,15 +68,12 @@ class _MoodChatScreenState extends State<MoodChatScreen> {
 
   Future<void> _sendMessage(String userMessage) async {
     if (userMessage.trim().isEmpty) return;
-
     setState(() {
       _messages.add({'role': 'user', 'content': userMessage});
       _isLoading = true;
     });
-
     _messageController.clear();
     _scrollToBottom();
-
     try {
       final aiResponse = await _aiProvider.sendMessage(userMessage);
       setState(() {
@@ -92,7 +88,6 @@ class _MoodChatScreenState extends State<MoodChatScreen> {
         _isLoading = false;
       });
     }
-
     _scrollToBottom();
   }
 
@@ -124,111 +119,116 @@ class _MoodChatScreenState extends State<MoodChatScreen> {
         backgroundColor: const Color(0xFF12122A),
         foregroundColor: const Color(0xFFAFA9EC),
         elevation: 0,
+        toolbarHeight: 52,
         title: Row(
           children: [
             Container(
-              width: 36, height: 36,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: const Color(0xFF26215C),
-                border: Border.all(color: const Color(0xFF534AB7)),
-              ),
-              child: Center(child: Text(MoodProvider.getMoodEmoji(widget.initialMood), style: const TextStyle(fontSize: 18))),
+              width: 32, height: 32,
+              decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xFF26215C), border: Border.all(color: const Color(0xFF534AB7))),
+              child: Center(child: Text(MoodProvider.getMoodEmoji(widget.initialMood), style: const TextStyle(fontSize: 16))),
             ),
             const SizedBox(width: 10),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('VAPA Mood Chat', style: TextStyle(color: Color(0xFFAFA9EC), fontSize: 16, fontWeight: FontWeight.bold)),
-                Text(
-                  _isSpeaking ? 'Speaking...' : 'Online',
-                  style: TextStyle(color: _isSpeaking ? const Color(0xFF7F77DD) : const Color(0xFF1D9E75), fontSize: 11),
-                ),
+                const Text('VAPA Mood Chat', style: TextStyle(color: Color(0xFFAFA9EC), fontSize: 15, fontWeight: FontWeight.bold)),
+                Text(_isSpeaking ? 'Speaking...' : 'Online', style: TextStyle(color: _isSpeaking ? const Color(0xFF7F77DD) : const Color(0xFF1D9E75), fontSize: 11)),
               ],
             ),
           ],
         ),
         actions: [
           IconButton(
-            icon: Icon(_isSpeaking ? Icons.volume_up : Icons.volume_off, color: const Color(0xFF7F77DD)),
+            icon: Icon(_isSpeaking ? Icons.volume_up : Icons.volume_off, color: const Color(0xFF7F77DD), size: 20),
             onPressed: () { if (_isSpeaking) { _flutterTts.stop(); setState(() => _isSpeaking = false); } },
           ),
         ],
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: ListView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.all(16),
-              itemCount: _messages.length + (_isLoading ? 1 : 0),
-              itemBuilder: (context, index) {
-                if (index == _messages.length && _isLoading) return _buildTypingIndicator();
-                final message = _messages[index];
-                return _buildMessage(message['content']!, message['role'] == 'user');
-              },
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: const BoxDecoration(
-              color: Color(0xFF12122A),
-              border: Border(top: BorderSide(color: Color(0xFF3C3489), width: 0.5)),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _messageController,
-                    style: const TextStyle(color: Color(0xFFCCC9F5)),
-                    maxLines: null,
-                    decoration: InputDecoration(
-                      hintText: 'Talk to VAPA...',
-                      hintStyle: const TextStyle(color: Color(0xFF7777AA)),
-                      filled: true,
-                      fillColor: const Color(0xFF1A1A2E),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: const BorderSide(color: Color(0xFF534AB7))),
-                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: const BorderSide(color: Color(0xFF534AB7))),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      // ── Constrained width for web ──────────────────────────────────────────
+      body: Align(
+        alignment: Alignment.topCenter,
+        child: SizedBox(
+          width: 700,
+          child: Column(
+            children: [
+              // Messages list
+              Expanded(
+                child: ListView.builder(
+                  controller: _scrollController,
+                  padding: const EdgeInsets.all(16),
+                  itemCount: _messages.length + (_isLoading ? 1 : 0),
+                  itemBuilder: (context, index) {
+                    if (index == _messages.length && _isLoading) return _buildTypingIndicator();
+                    final message = _messages[index];
+                    return _buildMessage(message['content']!, message['role'] == 'user');
+                  },
+                ),
+              ),
+              // Input area
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: const BoxDecoration(
+                  color: Color(0xFF12122A),
+                  border: Border(top: BorderSide(color: Color(0xFF3C3489), width: 0.5)),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _messageController,
+                        style: const TextStyle(color: Color(0xFFCCC9F5), fontSize: 14),
+                        maxLines: null,
+                        decoration: InputDecoration(
+                          hintText: 'Talk to VAPA...',
+                          hintStyle: const TextStyle(color: Color(0xFF7777AA), fontSize: 13),
+                          filled: true,
+                          fillColor: const Color(0xFF1A1A2E),
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: const BorderSide(color: Color(0xFF534AB7))),
+                          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: const BorderSide(color: Color(0xFF534AB7))),
+                          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: const BorderSide(color: Color(0xFF7F77DD), width: 1.5)),
+                        ),
+                        onSubmitted: _sendMessage,
+                      ),
                     ),
-                    onSubmitted: _sendMessage,
-                  ),
+                    const SizedBox(width: 8),
+                    GestureDetector(
+                      onTap: () => _sendMessage(_messageController.text),
+                      child: Container(
+                        width: 44, height: 44,
+                        decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFF534AB7)),
+                        child: const Icon(Icons.arrow_forward, color: Colors.white, size: 20),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 8),
-                GestureDetector(
-                  onTap: () => _sendMessage(_messageController.text),
-                  child: Container(
-                    width: 48, height: 48,
-                    decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFF534AB7)),
-                    child: const Icon(Icons.arrow_forward, color: Colors.white, size: 20),
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
 
   Widget _buildMessage(String content, bool isUser) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: 10),
       child: Row(
         mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           if (!isUser) ...[
             Container(
-              width: 32, height: 32,
+              width: 28, height: 28,
               decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xFF26215C), border: Border.all(color: const Color(0xFF534AB7))),
-              child: const Center(child: Text('🤖', style: TextStyle(fontSize: 14))),
+              child: const Center(child: Text('🤖', style: TextStyle(fontSize: 13))),
             ),
             const SizedBox(width: 8),
           ],
           Flexible(
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
               decoration: BoxDecoration(
                 color: isUser ? const Color(0xFF534AB7) : const Color(0xFF12122A),
                 borderRadius: BorderRadius.only(
@@ -239,7 +239,7 @@ class _MoodChatScreenState extends State<MoodChatScreen> {
                 ),
                 border: isUser ? null : Border.all(color: const Color(0xFF3C3489)),
               ),
-              child: Text(content, style: TextStyle(color: isUser ? Colors.white : const Color(0xFFCCC9F5), fontSize: 14)),
+              child: Text(content, style: TextStyle(color: isUser ? Colors.white : const Color(0xFFCCC9F5), fontSize: 13, height: 1.5)),
             ),
           ),
           if (isUser) const SizedBox(width: 8),
@@ -250,21 +250,19 @@ class _MoodChatScreenState extends State<MoodChatScreen> {
 
   Widget _buildTypingIndicator() {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: 10),
       child: Row(
         children: [
           Container(
-            width: 32, height: 32,
+            width: 28, height: 28,
             decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xFF26215C), border: Border.all(color: const Color(0xFF534AB7))),
-            child: const Center(child: Text('🤖', style: TextStyle(fontSize: 14))),
+            child: const Center(child: Text('🤖', style: TextStyle(fontSize: 13))),
           ),
           const SizedBox(width: 8),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(color: const Color(0xFF12122A), borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFF3C3489))),
-            child: Row(
-              children: [_buildDot(0), const SizedBox(width: 4), _buildDot(1), const SizedBox(width: 4), _buildDot(2)],
-            ),
+            child: Row(children: [_buildDot(0), const SizedBox(width: 4), _buildDot(1), const SizedBox(width: 4), _buildDot(2)]),
           ),
         ],
       ),
@@ -278,10 +276,7 @@ class _MoodChatScreenState extends State<MoodChatScreen> {
       builder: (context, value, child) {
         return Container(
           width: 8, height: 8,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: const Color(0xFF7F77DD).withValues(alpha: 0.3 + (value * 0.7)),
-          ),
+          decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xFF7F77DD).withValues(alpha: 0.3 + (value * 0.7))),
         );
       },
     );

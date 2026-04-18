@@ -24,16 +24,12 @@
     }
   </style>
 
-  <!--
-    IMPORTANT: All VAPA JavaScript MUST be in <head> as a synchronous script.
-    If placed in <body> with async, Flutter loads before the functions exist
-    and throws: "startSpeechRecognition is not a function"
-  -->
   <script>
     // ─── Browser Detection ──────────────────────────────────────────────────
     const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
     const isEdge   = /Edg\//.test(navigator.userAgent);
-    console.log('[VAPA] Browser: ' + (isSafari ? 'Safari' : isEdge ? 'Edge' : 'Chrome'));
+    const isIOS    = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    console.log('[VAPA] Browser: ' + (isSafari ? 'Safari' : isEdge ? 'Edge' : 'Chrome') + ' iOS: ' + isIOS);
 
     // ─── Mic Permission Helper ──────────────────────────────────────────────
     async function requestMicPermission() {
@@ -54,13 +50,10 @@
     window.nativeSpeak = function(text, rate, pitch, onDone) {
       if (!window.speechSynthesis) { onDone && onDone(); return; }
       window.speechSynthesis.cancel();
-
       const utter        = new SpeechSynthesisUtterance(text);
       utter.rate         = rate  || 0.95;
       utter.pitch        = pitch || 0.85;
       utter.lang         = 'en-GB';
-
-      // Voice priority for British Male
       const voices   = window.speechSynthesis.getVoices();
       const preferred =
         voices.find(v => v.name === 'Google UK English Male') ||
@@ -70,7 +63,6 @@
         voices.find(v => v.lang === 'en-GB') ||
         voices.find(v => v.lang.startsWith('en'));
       if (preferred) utter.voice = preferred;
-
       utter.onend   = () => { _currentUtterance = null; onDone && onDone(); };
       utter.onerror = () => { _currentUtterance = null; onDone && onDone(); };
       _currentUtterance = utter;
@@ -83,7 +75,6 @@
       _currentUtterance = null;
     };
 
-    // Preload voices (they load async on some browsers)
     if (window.speechSynthesis) {
       window.speechSynthesis.onvoiceschanged = function() {
         window.speechSynthesis.getVoices();
@@ -100,12 +91,10 @@
 
     window.startSpeechRecognition = async function(onResult, onError) {
       console.log('[VAPA STT] startSpeechRecognition called');
-
       if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
         onError('Speech recognition not supported. Please use Chrome.');
         return null;
       }
-
       if (isEdge || isSafari) {
         const granted = await requestMicPermission();
         if (!granted) {
@@ -113,7 +102,6 @@
           return null;
         }
       }
-
       _onResultCb = onResult;
       _onErrorCb  = onError;
       _createAndStart();
@@ -121,24 +109,14 @@
     };
 
     function _createAndStart() {
-      if (_isRunning) {
-        console.log('[VAPA STT] Already running, skipping start');
-        return;
-      }
-
+      if (_isRunning) return;
       const SR     = window.SpeechRecognition || window.webkitSpeechRecognition;
       _recognition = new SR();
-
       _recognition.continuous      = true;
       _recognition.interimResults  = true;
       _recognition.lang            = 'en-US';
       _recognition.maxAlternatives = 1;
-
-      _recognition.onstart = () => {
-        _isRunning = true;
-        console.log('[VAPA STT] Started');
-      };
-
+      _recognition.onstart = () => { _isRunning = true; console.log('[VAPA STT] Started'); };
       _recognition.onresult = (event) => {
         let transcript = '';
         let isFinal    = false;
@@ -147,16 +125,12 @@
           if (event.results[i].isFinal) isFinal = true;
         }
         if (transcript.trim()) {
-          console.log('[VAPA STT] ' + (isFinal ? 'FINAL' : 'partial') + ': ' + transcript);
           _onResultCb && _onResultCb(transcript, isFinal);
         }
       };
-
       _recognition.onerror = (event) => {
-        console.error('[VAPA STT] Error:', event.error);
         _isRunning = false;
         if (event.error === 'no-speech') {
-          // Silent restart — no-speech is normal
           setTimeout(_createAndStart, 100);
         } else {
           const errorMap = {
@@ -168,50 +142,33 @@
           _onErrorCb && _onErrorCb(errorMap[event.error] || event.error);
         }
       };
-
       _recognition.onend = () => {
         _isRunning = false;
-        console.log('[VAPA STT] Ended');
-        if (_shouldRestart) {
-          _shouldRestart = false;
-          setTimeout(_createAndStart, 150);
-        }
+        if (_shouldRestart) { _shouldRestart = false; setTimeout(_createAndStart, 150); }
       };
-
       try {
         _recognition.start();
-        console.log('[VAPA STT] start() called');
       } catch(e) {
         _isRunning = false;
-        console.error('[VAPA STT] Start error:', e);
         _onErrorCb && _onErrorCb('Could not start mic: ' + e.message);
       }
     }
 
     window.pauseSpeechRecognition = function() {
-      console.log('[VAPA STT] Pausing for TTS');
       _shouldRestart = true;
-      if (_recognition && _isRunning) {
-        try { _recognition.stop(); } catch(e) {}
-      }
+      if (_recognition && _isRunning) { try { _recognition.stop(); } catch(e) {} }
     };
 
     window.resumeSpeechRecognition = function() {
-      console.log('[VAPA STT] Resuming after TTS');
       _shouldRestart = false;
-      if (!_isRunning) {
-        setTimeout(_createAndStart, 150);
-      }
+      if (!_isRunning) { setTimeout(_createAndStart, 150); }
     };
 
     window.stopSpeechRecognition = function(handle) {
-      console.log('[VAPA STT] Fully stopped');
       _shouldRestart = false;
       _onResultCb    = null;
       _onErrorCb     = null;
-      if (_recognition && _isRunning) {
-        try { _recognition.stop(); } catch(e) {}
-      }
+      if (_recognition && _isRunning) { try { _recognition.stop(); } catch(e) {} }
       _recognition = null;
       _isRunning   = false;
     };
@@ -242,7 +199,10 @@
   </script>
 </head>
 <body>
-  <!-- Bootstrap loads AFTER all JS is defined in <head> -->
-  <script src="flutter_bootstrap.js?v=9"></script>
+  <!-- Force HTML renderer for iOS Safari compatibility -->
+  <script>
+    window._flutter_web_renderer = "html";
+  </script>
+  <script src="flutter_bootstrap.js?v=10"></script>
 </body>
 </html>

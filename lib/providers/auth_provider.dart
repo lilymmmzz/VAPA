@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/auth_service.dart';
 
 class AuthProvider extends ChangeNotifier {
@@ -7,49 +8,75 @@ class AuthProvider extends ChangeNotifier {
   User? _user;
   bool _isLoading = false;
   String? _errorMessage;
+  String? _displayName;
+  bool _hasCompletedSetup = false;
 
   User? get user => _user;
   bool get isLoading => _isLoading;
   bool get isAuthenticated => _user != null;
   String? get errorMessage => _errorMessage;
+  String? get displayName => _displayName;
+  bool get hasCompletedSetup => _hasCompletedSetup;
+
+  String get greeting {
+    if (_displayName != null && _displayName!.isNotEmpty) return _displayName!;
+    final email = _user?.email ?? '';
+    if (email.isNotEmpty) {
+      final raw = email.split('@')[0].split('.')[0];
+      return raw[0].toUpperCase() + raw.substring(1);
+    }
+    return 'there';
+  }
 
   AuthProvider() {
-    // Set initial user state
     _user = FirebaseAuth.instance.currentUser;
+    if (_user != null) _loadUserProfile();
 
-    // Listen to auth state changes but ONLY for sign-out events
-    // Login success is handled manually in the login() method
     FirebaseAuth.instance.authStateChanges().listen((User? user) {
-      // Only process sign-out (user becomes null)
-      // Sign-in is handled in login() to prevent reload on failed attempts
       if (user == null) {
         _user = null;
+        _displayName = null;
+        _hasCompletedSetup = false;
         notifyListeners();
       }
     });
   }
 
-  // Register
+  Future<void> _loadUserProfile() async {
+    if (_user == null) return;
+    try {
+      final doc = await FirebaseFirestore.instance.collection('users').doc(_user!.uid).get();
+      if (doc.exists) {
+        _displayName = doc.data()?['displayName'] as String?;
+        _hasCompletedSetup = doc.data()?['hasCompletedSetup'] as bool? ?? false;
+      }
+      notifyListeners();
+    } catch (e) {
+      debugPrint('=== LOAD PROFILE ERROR: $e ===');
+    }
+  }
+
   Future<bool> register(String email, String password) async {
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
-
     try {
       await _authService.register(email, password);
       _user = FirebaseAuth.instance.currentUser;
+      _hasCompletedSetup = false;
+      _displayName = null;
       _isLoading = false;
       notifyListeners();
       return true;
     } on FirebaseAuthException catch (e) {
-      print('=== REGISTER ERROR: ${e.code} ===');
+      debugPrint('=== REGISTER ERROR: ${e.code} ===');
       _errorMessage = e.code;
       _user = null;
       _isLoading = false;
       notifyListeners();
       return false;
     } catch (e) {
-      print('=== REGISTER ERROR: $e ===');
+      debugPrint('=== REGISTER ERROR: $e ===');
       _errorMessage = e.toString();
       _user = null;
       _isLoading = false;
@@ -58,28 +85,25 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  // Login — manually sets user on success, keeps null on failure
   Future<bool> login(String email, String password) async {
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
-
     try {
       await _authService.login(email, password);
-      // Only set user if login actually succeeded
       _user = FirebaseAuth.instance.currentUser;
       _isLoading = false;
+      await _loadUserProfile();
       notifyListeners();
       return true;
     } on FirebaseAuthException catch (e) {
-      print('=== LOGIN ERROR CODE: ${e.code} ===');
-      // Keep _user as null — do NOT update it
+      debugPrint('=== LOGIN ERROR CODE: ${e.code} ===');
       _errorMessage = e.code;
       _isLoading = false;
       notifyListeners();
       return false;
     } catch (e) {
-      print('=== LOGIN ERROR: $e ===');
+      debugPrint('=== LOGIN ERROR: $e ===');
       _errorMessage = e.toString();
       _isLoading = false;
       notifyListeners();
@@ -87,12 +111,10 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  // Reset password
   Future<bool> resetPassword(String email) async {
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
-
     try {
       await _authService.resetPassword(email);
       _isLoading = false;
@@ -111,10 +133,26 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  // Logout
+  Future<void> updateDisplayName(String name) async {
+    if (_user == null) return;
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(_user!.uid).set({
+        'displayName': name,
+        'hasCompletedSetup': true,
+      }, SetOptions(merge: true));
+      _displayName = name;
+      _hasCompletedSetup = true;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('=== UPDATE NAME ERROR: $e ===');
+    }
+  }
+
   Future<void> logout() async {
     await _authService.logout();
     _user = null;
+    _displayName = null;
+    _hasCompletedSetup = false;
     notifyListeners();
   }
 }

@@ -1,67 +1,70 @@
-import 'mood_chat_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import '../../main.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/mood_provider.dart';
+import 'mood_chat_screen.dart';
 
 class MoodScreen extends StatefulWidget {
   const MoodScreen({super.key});
-
   @override
   State<MoodScreen> createState() => _MoodScreenState();
 }
 
-class _MoodScreenState extends State<MoodScreen> {
+class _MoodScreenState extends State<MoodScreen> with TickerProviderStateMixin {
   int _selectedMood = 3;
   final _noteController = TextEditingController();
   final FlutterTts _flutterTts = FlutterTts();
+  bool _isSpeaking = false;
+
+  late AnimationController _pulseController;
+  late Animation<double> _pulseAnimation;
 
   @override
   void initState() {
     super.initState();
     _initTts();
+    _pulseController = AnimationController(vsync: this, duration: const Duration(milliseconds: 1000))..repeat(reverse: true);
+    _pulseAnimation = Tween<double>(begin: 1.0, end: 1.12).animate(_pulseController);
   }
 
-Future<void> _initTts() async {
-  await _flutterTts.setLanguage('en-Uk');
-  await _flutterTts.setSpeechRate(0.85);
-  await _flutterTts.setVolume(1.0);
-  await _flutterTts.setPitch(1.0);
+  Future<void> _initTts() async {
+    await _flutterTts.setLanguage('en-UK');
+    await _flutterTts.setSpeechRate(0.85);
+    await _flutterTts.setVolume(1.0);
+    await _flutterTts.setPitch(1.0);
+    await _flutterTts.setVoice({'name': 'en-uk-x-iog-network', 'locale': 'en-US'});
+    _flutterTts.setStartHandler(() => setState(() => _isSpeaking = true));
+    _flutterTts.setCompletionHandler(() => setState(() => _isSpeaking = false));
+    _flutterTts.setCancelHandler(() => setState(() => _isSpeaking = false));
+  }
 
-  await _flutterTts.setVoice({
-    'name': 'en-uk-x-iog-network',
-    'locale': 'en-US',
-  });
-}
+  Future<void> _speakMoodLabel() async {
+    if (_isSpeaking) { await _flutterTts.stop(); return; }
+    await _flutterTts.speak('Your mood is ${MoodProvider.getMoodLabel(_selectedMood)}');
+  }
 
   @override
   void dispose() {
     _noteController.dispose();
+    _pulseController.dispose();
     _flutterTts.stop();
     super.dispose();
   }
 
-Future<void> _saveMood() async {
-  final authProvider = Provider.of<AuthProvider>(context, listen: false);
-  final moodProvider = Provider.of<MoodProvider>(context, listen: false);
-  final userId = authProvider.user?.uid ?? '';
-
-  await moodProvider.saveMood(
-      userId, _selectedMood, _noteController.text.trim());
-
-  if (mounted) {
-    _noteController.clear();
-    // Navigate to AI chat screen
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => MoodChatScreen(initialMood: _selectedMood),
-      ),
-    );
+  Future<void> _saveMood() async {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final moodProvider = Provider.of<MoodProvider>(context, listen: false);
+    final userId = authProvider.user?.uid ?? '';
+    await moodProvider.saveMood(userId, _selectedMood, _noteController.text.trim());
+    if (mounted) {
+      _noteController.clear();
+      Navigator.push(context, MaterialPageRoute(builder: (_) => MoodChatScreen(initialMood: _selectedMood)));
+    }
   }
-}
-@override
+
+  @override
   Widget build(BuildContext context) {
     final moodProvider = Provider.of<MoodProvider>(context);
     final authProvider = Provider.of<AuthProvider>(context);
@@ -69,299 +72,226 @@ Future<void> _saveMood() async {
     final weeklyAverage = moodProvider.getWeeklyAverage();
 
     return Scaffold(
-      backgroundColor: const Color(0xFF1A1A2E),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Weekly average card
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: const Color(0xFF12122A),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFF3C3489)),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 56,
-                    height: 56,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: const Color(0xFF26215C),
-                      border: Border.all(color: const Color(0xFF534AB7)),
-                    ),
-                    child: Center(
-                      child: Text(
-                        weeklyAverage > 0
-                            ? MoodProvider.getMoodEmoji(
-                                weeklyAverage.round())
-                            : '📊',
-                        style: const TextStyle(fontSize: 24),
-                      ),
-                    ),
+      backgroundColor: VapaColors.bg,
+      appBar: AppBar(
+        title: const Text('Mood'),
+        backgroundColor: VapaColors.bg,
+        toolbarHeight: 48,
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: GestureDetector(
+              onTap: _speakMoodLabel,
+              child: ScaleTransition(
+                scale: _isSpeaking ? _pulseAnimation : const AlwaysStoppedAnimation(1.0),
+                child: Container(
+                  width: 36, height: 36,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: _isSpeaking ? VapaColors.teal : VapaColors.purple,
+                    border: Border.all(color: VapaColors.tealLight.withValues(alpha: 0.4), width: 1.5),
                   ),
-                  const SizedBox(width: 16),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Weekly Mood Average',
-                        style: TextStyle(
-                          color: Color(0xFF7777AA),
-                          fontSize: 12,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        weeklyAverage > 0
-                            ? MoodProvider.getMoodLabel(
-                                weeklyAverage.round())
-                            : 'No data yet',
-                        style: const TextStyle(
-                          color: Color(0xFFCCC9F5),
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
+                  child: Icon(_isSpeaking ? Icons.volume_up : Icons.volume_up_outlined, color: Colors.white, size: 18),
+                ),
               ),
             ),
-            const SizedBox(height: 20),
+          ),
+        ],
+      ),
+      body: Align(
+        alignment: Alignment.topCenter,
+        child: SizedBox(
+          width: 560,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
 
-            // Today's mood section
-            if (!moodProvider.hasLoggedToday) ...[
-              const Text(
-                'How are you feeling today?',
-                style: TextStyle(
-                  color: Color(0xFFAFA9EC),
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 16),
-              // Mood selector
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: List.generate(5, (index) {
-                  final score = index + 1;
-                  final isSelected = _selectedMood == score;
-                  return GestureDetector(
-                    onTap: () => setState(() => _selectedMood = score),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      width: isSelected ? 64 : 52,
-                      height: isSelected ? 64 : 52,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: isSelected
-                            ? MoodProvider.getMoodColor(score)
-                                .withValues(alpha: (0.3 * 255).roundToDouble())
-                            : const Color(0xFF12122A),
-                        border: Border.all(
-                          color: isSelected
-                              ? MoodProvider.getMoodColor(score)
-                              : const Color(0xFF3C3489),
-                          width: isSelected ? 2 : 1,
-                        ),
+                // ── Weekly average card ──────────────────────────────────
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: VapaColors.surface,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: VapaColors.border),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 42, height: 42,
+                        decoration: BoxDecoration(shape: BoxShape.circle, color: VapaColors.purpleDim, border: Border.all(color: VapaColors.purple)),
+                        child: Center(child: Text(weeklyAverage > 0 ? MoodProvider.getMoodEmoji(weeklyAverage.round()) : '📊', style: const TextStyle(fontSize: 20))),
                       ),
-                      child: Center(
-                        child: Text(
-                          MoodProvider.getMoodEmoji(score),
-                          style: TextStyle(
-                              fontSize: isSelected ? 28 : 22),
-                        ),
+                      const SizedBox(width: 12),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Weekly Mood Average', style: TextStyle(color: VapaColors.textMuted, fontSize: 11)),
+                          const SizedBox(height: 2),
+                          Text(weeklyAverage > 0 ? MoodProvider.getMoodLabel(weeklyAverage.round()) : 'No data yet', style: const TextStyle(color: VapaColors.textPrimary, fontSize: 15, fontWeight: FontWeight.bold)),
+                        ],
                       ),
-                    ),
-                  );
-                }),
-              ),
-              const SizedBox(height: 8),
-              Center(
-                child: Text(
-                  MoodProvider.getMoodLabel(_selectedMood),
-                  style: TextStyle(
-                    color: MoodProvider.getMoodColor(_selectedMood),
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
+                      const Spacer(),
+                      if (weeklyAverage > 0)
+                        Text(weeklyAverage.toStringAsFixed(1), style: const TextStyle(color: VapaColors.tealLight, fontSize: 20, fontWeight: FontWeight.w600)),
+                    ],
                   ),
                 ),
-              ),
-              const SizedBox(height: 16),
-              // Note field
-              TextField(
-                controller: _noteController,
-                style: const TextStyle(color: Color(0xFFCCC9F5)),
-                maxLines: 3,
-                decoration: InputDecoration(
-                  hintText: 'Add a note about your day (optional)...',
-                  hintStyle: const TextStyle(color: Color(0xFF7777AA)),
-                  filled: true,
-                  fillColor: const Color(0xFF12122A),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide:
-                        const BorderSide(color: Color(0xFF534AB7)),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton(
-                  onPressed: _saveMood,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF534AB7),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: const Text('Log My Mood',
-                      style:
-                          TextStyle(fontSize: 16, color: Colors.white)),
-                ),
-              ),
-            ] else ...[
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF12122A),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFF1D9E75)),
-                ),
-                child: const Row(
-                  children: [
-                    Text('✅', style: TextStyle(fontSize: 24)),
-                    SizedBox(width: 12),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                const SizedBox(height: 14),
+
+                // ── Today's mood / already logged ────────────────────────
+                if (!moodProvider.hasLoggedToday) ...[
+                  const Text('How are you feeling today?', style: TextStyle(color: VapaColors.textPrimary, fontSize: 15, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 10),
+                  Container(
+                    padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+                    decoration: BoxDecoration(color: VapaColors.surface, borderRadius: BorderRadius.circular(14), border: Border.all(color: VapaColors.border)),
+                    child: Column(
                       children: [
-                        Text(
-                          'Mood logged today!',
-                          style: TextStyle(
-                            color: Color(0xFF5DCAA5),
-                            fontWeight: FontWeight.bold,
-                          ),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceAround,
+                          children: List.generate(5, (index) {
+                            final score = index + 1;
+                            final isSelected = _selectedMood == score;
+                            return GestureDetector(
+                              onTap: () => setState(() => _selectedMood = score),
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 200),
+                                width: isSelected ? 52 : 40,
+                                height: isSelected ? 52 : 40,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: isSelected ? MoodProvider.getMoodColor(score).withValues(alpha: 0.3) : VapaColors.surfaceAlt,
+                                  border: Border.all(color: isSelected ? MoodProvider.getMoodColor(score) : VapaColors.border, width: isSelected ? 2 : 1),
+                                ),
+                                child: Center(child: Text(MoodProvider.getMoodEmoji(score), style: TextStyle(fontSize: isSelected ? 22 : 17))),
+                              ),
+                            );
+                          }),
                         ),
-                        Text(
-                          'Come back tomorrow',
-                          style: TextStyle(
-                            color: Color(0xFF7777AA),
-                            fontSize: 12,
-                          ),
+                        const SizedBox(height: 8),
+                        Text(MoodProvider.getMoodLabel(_selectedMood), style: TextStyle(color: MoodProvider.getMoodColor(_selectedMood), fontSize: 13, fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _noteController,
+                    style: const TextStyle(color: VapaColors.textPrimary, fontSize: 13),
+                    maxLines: 2,
+                    decoration: InputDecoration(
+                      hintText: 'Add a note about your day (optional)...',
+                      hintStyle: const TextStyle(color: VapaColors.textMuted, fontSize: 12),
+                      filled: true,
+                      fillColor: VapaColors.surface,
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: VapaColors.border)),
+                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: VapaColors.border)),
+                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: VapaColors.tealLight, width: 1.5)),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 44,
+                    child: ElevatedButton.icon(
+                      onPressed: _saveMood,
+                      icon: const Icon(Icons.mood, size: 17),
+                      label: const Text('Log My Mood', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                      style: ElevatedButton.styleFrom(backgroundColor: VapaColors.purple, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                    ),
+                  ),
+                ] else ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(color: VapaColors.tealDim, borderRadius: BorderRadius.circular(14), border: Border.all(color: VapaColors.teal)),
+                    child: const Row(
+                      children: [
+                        Text('✅', style: TextStyle(fontSize: 18)),
+                        SizedBox(width: 10),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Mood logged today!', style: TextStyle(color: VapaColors.tealLight, fontWeight: FontWeight.bold, fontSize: 13)),
+                            Text('Come back tomorrow', style: TextStyle(color: VapaColors.textMuted, fontSize: 11)),
+                          ],
                         ),
                       ],
                     ),
-                  ],
-                ),
-              ),
-            ],
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 44,
+                    child: ElevatedButton.icon(
+                      onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MoodChatScreen(initialMood: _selectedMood))),
+                      icon: const Icon(Icons.mic, size: 17),
+                      label: const Text('Chat with Nova', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                      style: ElevatedButton.styleFrom(backgroundColor: VapaColors.teal, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                    ),
+                  ),
+                ],
 
-            const SizedBox(height: 24),
-            // Mood history
-            const Text(
-              'Mood History',
-              style: TextStyle(
-                color: Color(0xFFAFA9EC),
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
+                const SizedBox(height: 18),
+
+                // ── Mood history ─────────────────────────────────────────
+                const Text('Mood History', style: TextStyle(color: VapaColors.textPrimary, fontSize: 13, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+
+                moodProvider.isLoading
+                    ? const Center(child: CircularProgressIndicator(color: VapaColors.tealLight))
+                    : moodProvider.moods.isEmpty
+                        ? Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(color: VapaColors.surface, borderRadius: BorderRadius.circular(12), border: Border.all(color: VapaColors.border)),
+                            child: const Center(child: Text('No mood history yet', style: TextStyle(color: VapaColors.textMuted, fontSize: 12))),
+                          )
+                        : ListView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: moodProvider.moods.length,
+                            itemBuilder: (context, index) {
+                              final mood = moodProvider.moods[index];
+                              return Container(
+                                margin: const EdgeInsets.only(bottom: 6),
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: VapaColors.surface,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: MoodProvider.getMoodColor(mood.moodScore).withValues(alpha: 0.3)),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Text(MoodProvider.getMoodEmoji(mood.moodScore), style: const TextStyle(fontSize: 20)),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(mood.moodLabel, style: TextStyle(color: MoodProvider.getMoodColor(mood.moodScore), fontWeight: FontWeight.w600, fontSize: 12)),
+                                          if (mood.note.isNotEmpty) Text(mood.note, style: const TextStyle(color: VapaColors.textMuted, fontSize: 11)),
+                                          Text('${mood.createdAt.day}/${mood.createdAt.month}/${mood.createdAt.year}', style: const TextStyle(color: VapaColors.textMuted, fontSize: 11)),
+                                        ],
+                                      ),
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.delete_outline, color: Colors.red, size: 16),
+                                      onPressed: () => moodProvider.deleteMood(userId, mood.id),
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+              ],
             ),
-            const SizedBox(height: 12),
-            moodProvider.isLoading
-                ? const Center(
-                    child: CircularProgressIndicator(
-                        color: Color(0xFF7F77DD)))
-                : moodProvider.moods.isEmpty
-                    ? const Center(
-                        child: Text(
-                          'No mood history yet',
-                          style: TextStyle(color: Color(0xFF534AB7)),
-                        ),
-                      )
-                    : ListView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: moodProvider.moods.length,
-                        itemBuilder: (context, index) {
-                          final mood = moodProvider.moods[index];
-                          return Container(
-                            margin: const EdgeInsets.only(bottom: 8),
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF12122A),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: MoodProvider.getMoodColor(
-                                        mood.moodScore)
-                                    .withValues(alpha: (0.3 * 255).roundToDouble()),
-                              ),
-                            ),
-                            child: Row(
-                              children: [
-                                Text(
-                                  MoodProvider.getMoodEmoji(
-                                      mood.moodScore),
-                                  style: const TextStyle(fontSize: 28),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        mood.moodLabel,
-                                        style: TextStyle(
-                                          color: MoodProvider
-                                              .getMoodColor(
-                                                  mood.moodScore),
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                      if (mood.note.isNotEmpty)
-                                        Text(
-                                          mood.note,
-                                          style: const TextStyle(
-                                            color: Color(0xFF7777AA),
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                      Text(
-                                        '${mood.createdAt.day}/${mood.createdAt.month}/${mood.createdAt.year}',
-                                        style: const TextStyle(
-                                          color: Color(0xFF534AB7),
-                                          fontSize: 11,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                IconButton(
-                                  icon: const Icon(
-                                      Icons.delete_outline,
-                                      color: Colors.red,
-                                      size: 18),
-                                  onPressed: () =>
-                                      moodProvider.deleteMood(
-                                          userId, mood.id),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-          ],
+          ),
         ),
       ),
     );
   }
 }
-

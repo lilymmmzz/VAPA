@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../main.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/notes_provider.dart';
 import 'note_editor_screen.dart';
@@ -14,188 +15,112 @@ class NotesScreen extends StatelessWidget {
     final userId = authProvider.user?.uid ?? '';
 
     return Scaffold(
-      backgroundColor: const Color(0xFF1A1A2E),
+      backgroundColor: VapaColors.bg,
       body: Column(
         children: [
-          // Search Bar
+          // Search bar
           Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: TextField(
-              onChanged: notesProvider.setSearchQuery,
-              style: const TextStyle(color: Color(0xFFCCC9F5)),
-              decoration: InputDecoration(
-                hintText: 'Search notes...',
-                hintStyle: const TextStyle(color: Color(0xFF7777AA)),
-                prefixIcon:
-                    const Icon(Icons.search, color: Color(0xFF534AB7)),
-                filled: true,
-                fillColor: const Color(0xFF12122A),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: Color(0xFF534AB7)),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: Color(0xFF534AB7)),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 600),
+                child: TextField(
+                  onChanged: notesProvider.setSearchQuery,
+                  style: const TextStyle(color: VapaColors.textPrimary, fontSize: 14),
+                  decoration: InputDecoration(
+                    hintText: 'Search notes...',
+                    hintStyle: const TextStyle(color: VapaColors.textMuted, fontSize: 13),
+                    prefixIcon: const Icon(Icons.search, color: VapaColors.purple, size: 18),
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    filled: true,
+                    fillColor: VapaColors.surface,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: VapaColors.border)),
+                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: VapaColors.border)),
+                    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: VapaColors.tealLight, width: 1.5)),
+                  ),
                 ),
               ),
             ),
           ),
-          // Notes List
+          // Notes list
           Expanded(
             child: notesProvider.isLoading
-                ? const Center(
-                    child: CircularProgressIndicator(
-                        color: Color(0xFF7F77DD)))
+                ? const Center(child: CircularProgressIndicator(color: VapaColors.tealLight))
                 : notesProvider.notes.isEmpty
                     ? Center(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Container(
-                              width: 80,
-                              height: 80,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: const Color(0xFF12122A),
-                                border: Border.all(
-                                    color: const Color(0xFF534AB7)),
-                              ),
-                              child: const Icon(
-                                Icons.note_outlined,
-                                size: 40,
-                                color: Color(0xFF534AB7),
-                              ),
+                              width: 64, height: 64,
+                              decoration: BoxDecoration(shape: BoxShape.circle, color: VapaColors.surface, border: Border.all(color: VapaColors.border)),
+                              child: const Icon(Icons.note_outlined, size: 32, color: VapaColors.textMuted),
                             ),
-                            const SizedBox(height: 16),
-                            const Text(
-                              'No notes yet',
-                              style: TextStyle(
-                                fontSize: 18,
-                                color: Color(0xFFAFA9EC),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            const Text(
-                              'Tap + to create your first note',
-                              style: TextStyle(color: Color(0xFF534AB7)),
-                            ),
+                            const SizedBox(height: 12),
+                            const Text('No notes yet', style: TextStyle(fontSize: 16, color: VapaColors.textSecondary)),
+                            const SizedBox(height: 4),
+                            const Text('Tap + to create your first note', style: TextStyle(color: VapaColors.textMuted, fontSize: 13)),
                           ],
                         ),
                       )
-                    : ListView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        itemCount: notesProvider.notes.length,
-                        itemBuilder: (context, index) {
-                          final note = notesProvider.notes[index];
-                          return Container(
-                            margin: const EdgeInsets.only(bottom: 12),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF12122A),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                  color: const Color(0xFF3C3489)),
-                            ),
-                            child: ListTile(
-                              contentPadding: const EdgeInsets.all(16),
-                              title: Text(
-                                note.title,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                  color: Color(0xFFCCC9F5),
+                    : Align(
+                        alignment: Alignment.topCenter,
+                        child: SizedBox(
+                          width: 600,
+                          child: ListView.builder(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                            itemCount: notesProvider.notes.length,
+                            itemBuilder: (context, index) {
+                              final note = notesProvider.notes[index];
+                              return Container(
+                                margin: const EdgeInsets.only(bottom: 8),
+                                decoration: BoxDecoration(
+                                  color: VapaColors.surface,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: VapaColors.border, width: 0.5),
                                 ),
-                              ),
-                              subtitle: Column(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.start,
-                                children: [
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    note.content,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                        color: Color(0xFF7777AA)),
+                                child: ListTile(
+                                  dense: true,
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                                  title: Text(note.title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: VapaColors.textPrimary)),
+                                  subtitle: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const SizedBox(height: 2),
+                                      Text(note.content, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: VapaColors.textMuted, fontSize: 12)),
+                                      const SizedBox(height: 4),
+                                      Text('Updated: ${note.updatedAt.day}/${note.updatedAt.month}/${note.updatedAt.year}', style: const TextStyle(fontSize: 11, color: VapaColors.textMuted)),
+                                    ],
                                   ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    'Updated: ${note.updatedAt.day}/${note.updatedAt.month}/${note.updatedAt.year}',
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      color: Color(0xFF534AB7),
+                                  trailing: IconButton(
+                                    icon: const Icon(Icons.delete_outline, color: Colors.red, size: 18),
+                                    onPressed: () => showDialog(
+                                      context: context,
+                                      builder: (_) => AlertDialog(
+                                        backgroundColor: VapaColors.surface,
+                                        title: const Text('Delete Note', style: TextStyle(color: VapaColors.textPrimary, fontSize: 16)),
+                                        content: const Text('Are you sure?', style: TextStyle(color: VapaColors.textSecondary)),
+                                        actions: [
+                                          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel', style: TextStyle(color: VapaColors.tealLight))),
+                                          TextButton(onPressed: () { notesProvider.deleteNote(userId, note.id); Navigator.pop(context); }, child: const Text('Delete', style: TextStyle(color: Colors.red))),
+                                        ],
+                                      ),
                                     ),
                                   ),
-                                ],
-                              ),
-                              trailing: IconButton(
-                                icon: const Icon(Icons.delete_outline,
-                                    color: Colors.red),
-                                onPressed: () {
-                                  showDialog(
-                                    context: context,
-                                    builder: (_) => AlertDialog(
-                                      backgroundColor:
-                                          const Color(0xFF12122A),
-                                      title: const Text(
-                                        'Delete Note',
-                                        style: TextStyle(
-                                            color: Color(0xFFCCC9F5)),
-                                      ),
-                                      content: const Text(
-                                        'Are you sure you want to delete this note?',
-                                        style: TextStyle(
-                                            color: Color(0xFF7777AA)),
-                                      ),
-                                      actions: [
-                                        TextButton(
-                                          onPressed: () =>
-                                              Navigator.pop(context),
-                                          child: const Text('Cancel',
-                                              style: TextStyle(
-                                                  color:
-                                                      Color(0xFF7F77DD))),
-                                        ),
-                                        TextButton(
-                                          onPressed: () {
-                                            notesProvider.deleteNote(
-                                                userId, note.id);
-                                            Navigator.pop(context);
-                                          },
-                                          child: const Text('Delete',
-                                              style: TextStyle(
-                                                  color: Colors.red)),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                },
-                              ),
-                              onTap: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) =>
-                                        NoteEditorScreen(note: note),
-                                  ),
-                                );
-                              },
-                            ),
-                          );
-                        },
+                                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => NoteEditorScreen(note: note))),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
                       ),
           ),
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-                builder: (_) => const NoteEditorScreen()),
-          );
-        },
-        backgroundColor: const Color(0xFF534AB7),
+        onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NoteEditorScreen())),
+        backgroundColor: VapaColors.purple,
         child: const Icon(Icons.add, color: Colors.white),
       ),
     );

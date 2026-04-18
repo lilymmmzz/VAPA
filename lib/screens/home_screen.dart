@@ -1,9 +1,13 @@
 import 'dart:convert';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import '../main.dart';
-import '../providers/auth_provider.dart';
+import '../providers/auth_provider.dart' as vapa;
+import '../services/user_profile_service.dart';
+import 'auth/login_screen.dart';
 import '../providers/notes_provider.dart';
 import '../providers/reminders_provider.dart';
 import '../providers/mood_provider.dart';
@@ -13,7 +17,8 @@ import 'mood/mood_screen.dart';
 import 'voice/voice_screen.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  final bool openNovaOnLoad;
+  const HomeScreen({super.key, this.openNovaOnLoad = false});
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
@@ -48,15 +53,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _novaAnimation = Tween<double>(begin: 1.0, end: 1.12).animate(_novaController);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final auth = Provider.of<AuthProvider>(context, listen: false);
+      final auth = Provider.of<vapa.AuthProvider>(context, listen: false);
       final userId = auth.user?.uid;
       if (userId != null) {
         Provider.of<NotesProvider>(context, listen: false).loadNotes(userId);
         Provider.of<RemindersProvider>(context, listen: false).loadReminders(userId);
         Provider.of<MoodProvider>(context, listen: false).loadMoods(userId);
       }
-      Future.delayed(const Duration(milliseconds: 600), () {
-        if (mounted) _openNova();
+      // Open Nova — immediately if first time, after delay on normal login
+      final delay = widget.openNovaOnLoad ? 800 : 600;
+      Future.delayed(Duration(milliseconds: delay), () {
+        if (mounted) _openNova(firstTime: widget.openNovaOnLoad);
       });
       if (!kIsWeb) _initVosk();
     });
@@ -98,7 +105,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     super.dispose();
   }
 
-  void _openNova() {
+  void _openNova({bool firstTime = false}) {
     if (_novaSheetOpen) return;
     _pauseVosk();
     setState(() => _novaSheetOpen = true);
@@ -106,7 +113,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => const _NovaSheet(),
+      builder: (_) => _NovaSheet(firstTime: firstTime),
     ).then((_) {
       setState(() => _novaSheetOpen = false);
       _resumeVosk();
@@ -351,7 +358,8 @@ class _NavItem extends StatelessWidget {
 
 // ── Nova bottom sheet ─────────────────────────────────────────────────────────
 class _NovaSheet extends StatefulWidget {
-  const _NovaSheet();
+  final bool firstTime;
+  const _NovaSheet({this.firstTime = false});
   @override
   State<_NovaSheet> createState() => _NovaSheetState();
 }
@@ -362,13 +370,15 @@ class _NovaSheetState extends State<_NovaSheet> {
   @override
   void initState() {
     super.initState();
-    final auth = Provider.of<AuthProvider>(context, listen: false);
+    _loadGreeting();
+  }
+
+  Future<void> _loadGreeting() async {
+    final auth = Provider.of<vapa.AuthProvider>(context, listen: false);
+    final userId = auth.user?.uid ?? '';
     final email = auth.user?.email ?? '';
-    if (email.isNotEmpty) {
-      final raw = email.split('@')[0].split('.')[0];
-      final name = raw[0].toUpperCase() + raw.substring(1);
-      _greeting = 'Hi, $name!';
-    }
+    final name = await UserProfileService.getDisplayName(userId, email: email);
+    if (mounted) setState(() => _greeting = widget.firstTime ? 'Hello $name! I\'m Nova 👋' : 'Hi, $name!');
   }
 
   @override
@@ -420,14 +430,268 @@ class _NovaSheetState extends State<_NovaSheet> {
 }
 
 // ── Profile screen ────────────────────────────────────────────────────────────
-class _ProfileScreen extends StatelessWidget {
+class _ProfileScreen extends StatefulWidget {
   const _ProfileScreen();
+  @override
+  State<_ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<_ProfileScreen> {
+  String _firstName = '';
+  String _lastName = '';
+  String _goal = '';
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfile();
+  }
+
+  Future<void> _loadProfile() async {
+    final auth = Provider.of<vapa.AuthProvider>(context, listen: false);
+    final userId = auth.user?.uid ?? '';
+    final profile = await UserProfileService.getProfile(userId);
+    if (mounted) {
+      setState(() {
+        _firstName = profile?['firstName'] ?? '';
+        _lastName = profile?['lastName'] ?? '';
+        _goal = profile?['goal'] ?? '';
+        _loading = false;
+      });
+    }
+  }
+
+  void _showDeleteAccountDialog(BuildContext context) {
+    final passwordController = TextEditingController();
+    bool isDeleting = false;
+    String? error;
+    bool obscurePassword = true;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          backgroundColor: VapaColors.surface,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.red, size: 22),
+              SizedBox(width: 8),
+              Text('Delete Account', style: TextStyle(color: Colors.red, fontSize: 18, fontWeight: FontWeight.w600)),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'This will permanently delete your account and all your data including notes, reminders and mood history.\n\nThis action cannot be undone.',
+                style: TextStyle(color: VapaColors.textSecondary, fontSize: 13, height: 1.5),
+              ),
+              const SizedBox(height: 16),
+              const Text('Enter your password to confirm:', style: TextStyle(color: VapaColors.textMuted, fontSize: 12)),
+              const SizedBox(height: 8),
+              TextField(
+                controller: passwordController,
+                obscureText: obscurePassword,
+                style: const TextStyle(color: VapaColors.textPrimary, fontSize: 14),
+                decoration: InputDecoration(
+                  hintText: 'Password',
+                  hintStyle: const TextStyle(color: VapaColors.textMuted),
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  prefixIcon: const Icon(Icons.lock_outlined, color: Colors.red, size: 18),
+                  suffixIcon: IconButton(
+                    icon: Icon(obscurePassword ? Icons.visibility_off : Icons.visibility, color: Colors.red, size: 18),
+                    onPressed: () => setDialogState(() => obscurePassword = !obscurePassword),
+                  ),
+                  errorText: error,
+                  errorStyle: const TextStyle(color: Colors.red, fontSize: 11),
+                  filled: true,
+                  fillColor: VapaColors.surfaceAlt,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.red)),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.red.withValues(alpha: 0.4))),
+                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.red, width: 1.5)),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: isDeleting ? null : () => Navigator.pop(ctx),
+              child: const Text('Cancel', style: TextStyle(color: VapaColors.tealLight)),
+            ),
+            ElevatedButton(
+              onPressed: isDeleting ? null : () async {
+                if (passwordController.text.trim().isEmpty) {
+                  setDialogState(() => error = 'Please enter your password.');
+                  return;
+                }
+                setDialogState(() { isDeleting = true; error = null; });
+                try {
+                  final auth = Provider.of<vapa.AuthProvider>(context, listen: false);
+                  final user = auth.user;
+                  if (user == null) return;
+                  final userId = user.uid;
+
+                  // Re-authenticate first
+                  final credential = EmailAuthProvider.credential(
+                    email: user.email!,
+                    password: passwordController.text.trim(),
+                  );
+                  await user.reauthenticateWithCredential(credential);
+
+                  // Delete all Firestore data
+                  final db = FirebaseFirestore.instance;
+                  final batch = db.batch();
+
+                  // Delete user profile
+                  batch.delete(db.collection('users').doc(userId));
+
+                  // Delete notes
+                  final notes = await db.collection('notes').where('userId', isEqualTo: userId).get();
+                  for (final doc in notes.docs) batch.delete(doc.reference);
+
+                  // Delete reminders
+                  final reminders = await db.collection('reminders').where('userId', isEqualTo: userId).get();
+                  for (final doc in reminders.docs) batch.delete(doc.reference);
+
+                  // Delete moods
+                  final moods = await db.collection('moods').where('userId', isEqualTo: userId).get();
+                  for (final doc in moods.docs) batch.delete(doc.reference);
+
+                  await batch.commit();
+
+                  // Delete Firebase Auth account
+                  await user.delete();
+
+                  if (ctx.mounted) Navigator.pop(ctx);
+                  if (context.mounted) {
+                    Navigator.of(context).pushAndRemoveUntil(
+                      MaterialPageRoute(builder: (_) => const LoginScreen()),
+                      (route) => false,
+                    );
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Account deleted successfully'), backgroundColor: VapaColors.teal),
+                    );
+                  }
+                } on FirebaseAuthException catch (e) {
+                  setDialogState(() {
+                    isDeleting = false;
+                    error = e.code == 'wrong-password' || e.code == 'invalid-credential'
+                        ? 'Incorrect password. Please try again.'
+                        : 'Authentication failed. Please try again.';
+                  });
+                } catch (e) {
+                  setDialogState(() { isDeleting = false; error = 'Something went wrong. Please try again.'; });
+                }
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+              child: isDeleting
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                  : const Text('Delete Account'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showEditProfileDialog(BuildContext context) {
+    final firstController = TextEditingController(text: _firstName);
+    final lastController = TextEditingController(text: _lastName);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: VapaColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Edit Profile', style: TextStyle(color: VapaColors.textPrimary, fontSize: 18)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: firstController,
+              autofocus: true,
+              textCapitalization: TextCapitalization.words,
+              style: const TextStyle(color: VapaColors.textPrimary, fontSize: 14),
+              decoration: InputDecoration(
+                labelText: 'First Name',
+                isDense: true,
+                prefixIcon: const Icon(Icons.person_outline, color: VapaColors.purple, size: 18),
+                filled: true,
+                fillColor: VapaColors.surfaceAlt,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: VapaColors.border)),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: VapaColors.border)),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: VapaColors.tealLight, width: 1.5)),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: lastController,
+              textCapitalization: TextCapitalization.words,
+              style: const TextStyle(color: VapaColors.textPrimary, fontSize: 14),
+              decoration: InputDecoration(
+                labelText: 'Last Name',
+                isDense: true,
+                prefixIcon: const Icon(Icons.person_outline, color: VapaColors.purple, size: 18),
+                filled: true,
+                fillColor: VapaColors.surfaceAlt,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: VapaColors.border)),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: VapaColors.border)),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: VapaColors.tealLight, width: 1.5)),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel', style: TextStyle(color: VapaColors.textMuted))),
+          ElevatedButton(
+            onPressed: () async {
+              final auth = Provider.of<vapa.AuthProvider>(context, listen: false);
+              final userId = auth.user?.uid ?? '';
+              await FirebaseFirestore.instance.collection('users').doc(userId).update({
+                'firstName': firstController.text.trim(),
+                'lastName': lastController.text.trim(),
+                'displayName': firstController.text.trim(),
+              });
+              if (mounted) {
+                setState(() {
+                  _firstName = firstController.text.trim();
+                  _lastName = lastController.text.trim();
+                });
+              }
+              if (ctx.mounted) Navigator.pop(ctx);
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: VapaColors.purple, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final auth = Provider.of<AuthProvider>(context);
+    final auth = Provider.of<vapa.AuthProvider>(context);
     final email = auth.user?.email ?? 'Unknown';
-    final initials = email.isNotEmpty ? email.substring(0, 2).toUpperCase() : 'VA';
+
+    final displayName = _firstName.isNotEmpty
+        ? (_lastName.isNotEmpty ? '$_firstName $_lastName' : _firstName)
+        : email.split('@')[0];
+
+    final initials = _firstName.isNotEmpty
+        ? (_lastName.isNotEmpty
+            ? '${_firstName[0]}${_lastName[0]}'.toUpperCase()
+            : _firstName.substring(0, _firstName.length >= 2 ? 2 : 1).toUpperCase())
+        : email.substring(0, 2).toUpperCase();
+
+    final goalLabel = {
+      'productivity': '🚀 Productivity',
+      'wellbeing': '🧘 Wellbeing',
+      'both': '⭐ Both',
+    }[_goal] ?? '';
 
     return Scaffold(
       backgroundColor: VapaColors.bg,
@@ -439,71 +703,108 @@ class _ProfileScreen extends StatelessWidget {
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 600),
-          child: ListView(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-        children: [
-          // Avatar — compact
-          Center(
-            child: Column(
-              children: [
-                Container(
-                  width: 64, height: 64,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: VapaColors.purpleDim,
-                    border: Border.all(color: VapaColors.purple, width: 2),
-                  ),
-                  child: Center(child: Text(initials, style: const TextStyle(color: VapaColors.textPrimary, fontSize: 22, fontWeight: FontWeight.w600))),
+          child: _loading
+              ? const Center(child: CircularProgressIndicator(color: VapaColors.tealLight))
+              : ListView(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  children: [
+                    // Avatar and name
+                    Center(
+                      child: Column(
+                        children: [
+                          Container(
+                            width: 72, height: 72,
+                            decoration: BoxDecoration(shape: BoxShape.circle, color: VapaColors.purpleDim, border: Border.all(color: VapaColors.purple, width: 2)),
+                            child: Center(child: Text(initials, style: const TextStyle(color: VapaColors.textPrimary, fontSize: 24, fontWeight: FontWeight.w600))),
+                          ),
+                          const SizedBox(height: 10),
+                          // Tappable name
+                          GestureDetector(
+                            onTap: () => _showEditProfileDialog(context),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(displayName, style: const TextStyle(color: VapaColors.textPrimary, fontSize: 18, fontWeight: FontWeight.w600)),
+                                const SizedBox(width: 6),
+                                const Icon(Icons.edit, color: VapaColors.textMuted, size: 14),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(email, style: const TextStyle(color: VapaColors.textMuted, fontSize: 12)),
+                          if (goalLabel.isNotEmpty) ...[
+                            const SizedBox(height: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                              decoration: BoxDecoration(color: VapaColors.purpleDim, borderRadius: BorderRadius.circular(20)),
+                              child: Text(goalLabel, style: const TextStyle(color: VapaColors.purpleLight, fontSize: 12)),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    _StatsRow(),
+                    const SizedBox(height: 16),
+                    const _SectionLabel('Settings'),
+                    _SettingsTile(icon: Icons.auto_awesome, label: 'AI Model', value: 'NVIDIA — Llama 3', onTap: () {}),
+                    _SettingsTile(icon: Icons.notifications_outlined, label: 'Notifications', value: 'Enabled', onTap: () {}),
+                    const SizedBox(height: 12),
+                    const _SectionLabel('About'),
+                    _SettingsTile(icon: Icons.info_outline, label: 'VAPA Version', value: '1.0.0', onTap: () {}),
+                    _SettingsTile(icon: Icons.school_outlined, label: 'University of Bolton', value: 'SWE6010', onTap: () {}),
+                    const SizedBox(height: 16),
+                    Container(
+                      width: double.infinity,
+                      decoration: BoxDecoration(border: Border.all(color: Colors.red.withValues(alpha: 0.4)), borderRadius: BorderRadius.circular(12)),
+                      child: TextButton.icon(
+                        onPressed: () async {
+                          final confirm = await showDialog<bool>(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              backgroundColor: VapaColors.surface,
+                              title: const Text('Sign out', style: TextStyle(color: VapaColors.textPrimary)),
+                              content: const Text('Are you sure you want to sign out?', style: TextStyle(color: VapaColors.textSecondary)),
+                              actions: [
+                                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel', style: TextStyle(color: VapaColors.tealLight))),
+                                TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Sign out', style: TextStyle(color: Colors.red))),
+                              ],
+                            ),
+                          );
+                          if (confirm == true && context.mounted) {
+                            await Provider.of<vapa.AuthProvider>(context, listen: false).logout();
+                            if (context.mounted) {
+                              Navigator.of(context).pushAndRemoveUntil(
+                                MaterialPageRoute(builder: (_) => const LoginScreen()),
+                                (route) => false,
+                              );
+                            }
+                          }
+                        },
+                        icon: const Icon(Icons.logout, color: Colors.red, size: 18),
+                        label: const Text('Sign out', style: TextStyle(color: Colors.red, fontSize: 15, fontWeight: FontWeight.w500)),
+                        style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    // Delete account button
+                    Container(
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.red.withValues(alpha: 0.2)),
+                        borderRadius: BorderRadius.circular(12),
+                        color: Colors.red.withValues(alpha: 0.05),
+                      ),
+                      child: TextButton.icon(
+                        onPressed: () => _showDeleteAccountDialog(context),
+                        icon: const Icon(Icons.delete_forever_outlined, color: Colors.red, size: 18),
+                        label: const Text('Delete Account', style: TextStyle(color: Colors.red, fontSize: 15, fontWeight: FontWeight.w500)),
+                        style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                  ],
                 ),
-                const SizedBox(height: 8),
-                Text(email, style: const TextStyle(color: VapaColors.textSecondary, fontSize: 13)),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          _StatsRow(),
-          const SizedBox(height: 16),
-          const _SectionLabel('Settings'),
-          _SettingsTile(icon: Icons.auto_awesome, label: 'AI Model', value: 'NVIDIA — Llama 3', onTap: () {}),
-          _SettingsTile(icon: Icons.notifications_outlined, label: 'Notifications', value: 'Enabled', onTap: () {}),
-          const SizedBox(height: 12),
-          const _SectionLabel('About'),
-          _SettingsTile(icon: Icons.info_outline, label: 'VAPA Version', value: '1.0.0', onTap: () {}),
-          _SettingsTile(icon: Icons.school_outlined, label: 'University of Bolton', value: 'SWE6010', onTap: () {}),
-          const SizedBox(height: 16),
-          // Sign out button — always visible
-          Container(
-            width: double.infinity,
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.red.withValues(alpha: 0.4)),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: TextButton.icon(
-              onPressed: () async {
-                final confirm = await showDialog<bool>(
-                  context: context,
-                  builder: (ctx) => AlertDialog(
-                    backgroundColor: VapaColors.surface,
-                    title: const Text('Sign out', style: TextStyle(color: VapaColors.textPrimary)),
-                    content: const Text('Are you sure you want to sign out?', style: TextStyle(color: VapaColors.textSecondary)),
-                    actions: [
-                      TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel', style: TextStyle(color: VapaColors.tealLight))),
-                      TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Sign out', style: TextStyle(color: Colors.red))),
-                    ],
-                  ),
-                );
-                if (confirm == true && context.mounted) {
-                  await Provider.of<AuthProvider>(context, listen: false).logout();
-                }
-              },
-              icon: const Icon(Icons.logout, color: Colors.red, size: 18),
-              label: const Text('Sign out', style: TextStyle(color: Colors.red, fontSize: 15, fontWeight: FontWeight.w500)),
-              style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
-            ),
-          ),
-          const SizedBox(height: 16),
-        ],
-      ),
         ),
       ),
     );

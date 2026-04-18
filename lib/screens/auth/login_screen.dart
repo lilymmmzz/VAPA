@@ -1,19 +1,22 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
 import '../../main.dart';
-import '../../providers/auth_provider.dart';
+import '../../providers/auth_provider.dart' as vapa;
+import '../../services/user_profile_service.dart';
 import '../home_screen.dart';
+import '../onboarding_screen.dart';
 import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  final String? errorMessage;
+  const LoginScreen({super.key, this.errorMessage});
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen>
-    with TickerProviderStateMixin {
+class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
@@ -30,29 +33,18 @@ class _LoginScreenState extends State<LoginScreen>
   @override
   void initState() {
     super.initState();
-    _pulseController = AnimationController(
-      duration: const Duration(seconds: 2),
-      vsync: this,
-    )..repeat(reverse: true);
-
-    _pulseAnimation = Tween<double>(begin: 0.95, end: 1.05).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-    );
-
-    _particleController = AnimationController(
-      duration: const Duration(seconds: 10),
-      vsync: this,
-    )..repeat();
-
+    // Show error passed from AuthWrapper (e.g. unverified email)
+    if (widget.errorMessage != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        setState(() => _generalError = widget.errorMessage);
+      });
+    }
+    _pulseController = AnimationController(duration: const Duration(seconds: 2), vsync: this)..repeat(reverse: true);
+    _pulseAnimation = Tween<double>(begin: 0.95, end: 1.05).animate(CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut));
+    _particleController = AnimationController(duration: const Duration(seconds: 10), vsync: this)..repeat();
     final random = Random();
     for (int i = 0; i < 30; i++) {
-      particles.add(Particle(
-        x: random.nextDouble(),
-        y: random.nextDouble(),
-        size: random.nextDouble() * 3 + 1,
-        speed: random.nextDouble() * 0.002 + 0.001,
-        opacity: random.nextDouble() * 0.5 + 0.1,
-      ));
+      particles.add(Particle(x: random.nextDouble(), y: random.nextDouble(), size: random.nextDouble() * 3 + 1, speed: random.nextDouble() * 0.002 + 0.001, opacity: random.nextDouble() * 0.5 + 0.1));
     }
   }
 
@@ -66,18 +58,11 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   void _handleAuthError(String? error) {
-    if (error == null) {
-      setState(() => _generalError = 'Sign in failed. Please check your details and try again.');
-      return;
-    }
+    if (error == null) { setState(() => _generalError = 'Sign in failed. Please check your details and try again.'); return; }
     final e = error.toLowerCase();
     setState(() {
-      _emailError = null;
-      _passwordError = null;
-      _generalError = null;
-      if (e.contains('wrong-password') || e.contains('invalid-credential') ||
-          e.contains('user-not-found') || e.contains('invalid-login') ||
-          e.contains('invalid-password')) {
+      _emailError = null; _passwordError = null; _generalError = null;
+      if (e.contains('wrong-password') || e.contains('invalid-credential') || e.contains('user-not-found') || e.contains('invalid-login') || e.contains('invalid-password')) {
         _passwordError = 'Incorrect email or password. Please try again.';
       } else if (e.contains('invalid-email')) {
         _emailError = 'Please enter a valid email address.';
@@ -103,13 +88,30 @@ class _LoginScreenState extends State<LoginScreen>
     if (password.length < 6) { setState(() => _passwordError = 'Password must be at least 6 characters.'); return; }
 
     setState(() => _isLoading = true);
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final authProvider = Provider.of<vapa.AuthProvider>(context, listen: false);
     final success = await authProvider.login(email, password);
     if (!mounted) return;
     setState(() => _isLoading = false);
+
     if (success) {
+      // Check email verification
+      final user = FirebaseAuth.instance.currentUser;
+      await user?.reload();
+      if (user != null && !user.emailVerified) {
+        // Sign out and show error
+        await FirebaseAuth.instance.signOut();
+        setState(() => _generalError = 'Please verify your email before signing in. Check your inbox for the verification link.');
+        return;
+      }
+
+      // Check if onboarding is complete
+      final userId = authProvider.user?.uid ?? '';
+      final onboardingDone = await UserProfileService.isOnboardingComplete(userId);
+
+      if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const HomeScreen()), (route) => false,
+        MaterialPageRoute(builder: (_) => onboardingDone ? const HomeScreen() : const OnboardingScreen()),
+        (route) => false,
       );
     } else {
       _handleAuthError(authProvider.errorMessage);
@@ -140,8 +142,7 @@ class _LoginScreenState extends State<LoginScreen>
                   labelText: 'Email address',
                   prefixIcon: const Icon(Icons.email_outlined, color: VapaColors.purple, size: 20),
                   errorText: dialogError,
-                  filled: true,
-                  fillColor: VapaColors.surfaceAlt,
+                  filled: true, fillColor: VapaColors.surfaceAlt,
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: VapaColors.borderAlt)),
                   enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: VapaColors.borderAlt)),
                   focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: VapaColors.tealLight, width: 1.5)),
@@ -155,8 +156,7 @@ class _LoginScreenState extends State<LoginScreen>
               onPressed: () async {
                 final email = emailController.text.trim();
                 if (email.isEmpty) { setDialogState(() => dialogError = 'Please enter your email.'); return; }
-                if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(email)) { setDialogState(() => dialogError = 'Please enter a valid email address.'); return; }
-                final authProvider = Provider.of<AuthProvider>(ctx, listen: false);
+                final authProvider = Provider.of<vapa.AuthProvider>(ctx, listen: false);
                 final success = await authProvider.resetPassword(email);
                 if (ctx.mounted) { Navigator.pop(ctx); _showResetFeedback(success, authProvider.errorMessage); }
               },
@@ -181,7 +181,7 @@ class _LoginScreenState extends State<LoginScreen>
           Text(success ? 'Email sent!' : 'Failed to send', style: TextStyle(color: success ? VapaColors.tealLight : Colors.red, fontSize: 17, fontWeight: FontWeight.w600)),
         ]),
         content: Text(
-          success ? 'A password reset link has been sent to your email. Check your inbox and spam folder.' : error ?? 'Could not send reset email. Please try again.',
+          success ? 'A password reset link has been sent to your email.' : error ?? 'Could not send reset email. Please try again.',
           style: const TextStyle(color: VapaColors.textSecondary, fontSize: 14),
         ),
         actions: [
@@ -201,17 +201,10 @@ class _LoginScreenState extends State<LoginScreen>
       backgroundColor: const Color(0xFF0D0D1A),
       body: Stack(
         children: [
-          // Particle background
           AnimatedBuilder(
             animation: _particleController,
-            builder: (context, child) {
-              return CustomPaint(
-                painter: ParticlePainter(particles: particles, progress: _particleController.value),
-                size: Size.infinite,
-              );
-            },
+            builder: (context, child) => CustomPaint(painter: ParticlePainter(particles: particles, progress: _particleController.value), size: Size.infinite),
           ),
-          // Content — centred and constrained width for web
           Center(
             child: SingleChildScrollView(
               child: Center(
@@ -221,68 +214,35 @@ class _LoginScreenState extends State<LoginScreen>
                     padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        // ── Animated avatar ────────────────────────────
+                        // Animated avatar
                         AnimatedBuilder(
                           animation: _pulseAnimation,
-                          builder: (context, child) {
-                            return SizedBox(
-                              width: 110,
-                              height: 110,
-                              child: Stack(
-                                alignment: Alignment.center,
-                                children: [
-                                  Transform.scale(
-                                    scale: _pulseAnimation.value * 1.3,
-                                    child: Container(
-                                      width: 90, height: 90,
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        border: Border.all(color: const Color(0xFF534AB7).withOpacity(0.3), width: 1),
-                                      ),
-                                    ),
-                                  ),
-                                  Transform.scale(
-                                    scale: _pulseAnimation.value * 1.1,
-                                    child: Container(
-                                      width: 80, height: 80,
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        border: Border.all(color: const Color(0xFF534AB7).withOpacity(0.5), width: 1),
-                                      ),
-                                    ),
-                                  ),
-                                  Container(
-                                    width: 70, height: 70,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      color: const Color(0xFF26215C),
-                                      border: Border.all(color: const Color(0xFF534AB7), width: 2),
-                                    ),
-                                    child: ClipOval(
-                                      child: CustomPaint(painter: AvatarPainter(), size: const Size(70, 70)),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
+                          builder: (context, child) => SizedBox(
+                            width: 110, height: 110,
+                            child: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                Transform.scale(scale: _pulseAnimation.value * 1.3, child: Container(width: 90, height: 90, decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: const Color(0xFF534AB7).withOpacity(0.3), width: 1)))),
+                                Transform.scale(scale: _pulseAnimation.value * 1.1, child: Container(width: 80, height: 80, decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: const Color(0xFF534AB7).withOpacity(0.5), width: 1)))),
+                                Container(
+                                  width: 70, height: 70,
+                                  decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xFF26215C), border: Border.all(color: const Color(0xFF534AB7), width: 2)),
+                                  child: ClipOval(child: CustomPaint(painter: AvatarPainter(), size: const Size(70, 70))),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
                         const SizedBox(height: 12),
                         const Text('VAPA', style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Color(0xFFAFA9EC), letterSpacing: 8)),
                         const SizedBox(height: 4),
                         const Text('Voice Activated Personal Assistant', style: TextStyle(fontSize: 11, color: Color(0xFF534AB7), letterSpacing: 1)),
                         const SizedBox(height: 28),
-
-                        // ── Card container ─────────────────────────────
+                        // Card
                         Container(
                           padding: const EdgeInsets.all(24),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF1A1A2E).withOpacity(0.8),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: const Color(0xFF2A2A45), width: 0.5),
-                          ),
+                          decoration: BoxDecoration(color: const Color(0xFF1A1A2E).withOpacity(0.8), borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFF2A2A45), width: 0.5)),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -290,17 +250,11 @@ class _LoginScreenState extends State<LoginScreen>
                               const SizedBox(height: 4),
                               const Text('Welcome back to VAPA', style: TextStyle(color: Color(0xFF555566), fontSize: 13)),
                               const SizedBox(height: 20),
-
-                              // General error
                               if (_generalError != null) ...[
                                 Container(
                                   width: double.infinity,
                                   padding: const EdgeInsets.all(10),
-                                  decoration: BoxDecoration(
-                                    color: Colors.red.withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(color: Colors.red.withOpacity(0.4)),
-                                  ),
+                                  decoration: BoxDecoration(color: Colors.red.withOpacity(0.1), borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.red.withOpacity(0.4))),
                                   child: Row(children: [
                                     const Icon(Icons.error_outline, color: Colors.red, size: 16),
                                     const SizedBox(width: 8),
@@ -309,51 +263,38 @@ class _LoginScreenState extends State<LoginScreen>
                                 ),
                                 const SizedBox(height: 14),
                               ],
-
-                              // Email field
                               TextField(
                                 controller: _emailController,
                                 keyboardType: TextInputType.emailAddress,
                                 style: const TextStyle(color: Color(0xFFCCC9F5), fontSize: 14),
                                 onChanged: (_) => setState(() => _emailError = null),
                                 decoration: InputDecoration(
-                                  labelText: 'Email',
-                                  isDense: true,
+                                  labelText: 'Email', isDense: true,
                                   contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
                                   prefixIcon: const Icon(Icons.email_outlined, color: Color(0xFF534AB7), size: 18),
-                                  errorText: _emailError,
-                                  errorStyle: const TextStyle(color: Colors.red, fontSize: 11),
+                                  errorText: _emailError, errorStyle: const TextStyle(color: Colors.red, fontSize: 11),
                                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: _emailError != null ? Colors.red : const Color(0xFF534AB7))),
                                   enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: _emailError != null ? Colors.red : const Color(0xFF534AB7))),
                                   focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF7F77DD), width: 1.5)),
                                 ),
                               ),
                               const SizedBox(height: 12),
-
-                              // Password field
                               TextField(
                                 controller: _passwordController,
                                 obscureText: _obscurePassword,
                                 style: const TextStyle(color: Color(0xFFCCC9F5), fontSize: 14),
                                 onChanged: (_) => setState(() => _passwordError = null),
                                 decoration: InputDecoration(
-                                  labelText: 'Password',
-                                  isDense: true,
+                                  labelText: 'Password', isDense: true,
                                   contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
                                   prefixIcon: const Icon(Icons.lock_outlined, color: Color(0xFF534AB7), size: 18),
-                                  errorText: _passwordError,
-                                  errorStyle: const TextStyle(color: Colors.red, fontSize: 11),
-                                  suffixIcon: IconButton(
-                                    icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility, color: const Color(0xFF534AB7), size: 18),
-                                    onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
-                                  ),
+                                  errorText: _passwordError, errorStyle: const TextStyle(color: Colors.red, fontSize: 11),
+                                  suffixIcon: IconButton(icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility, color: const Color(0xFF534AB7), size: 18), onPressed: () => setState(() => _obscurePassword = !_obscurePassword)),
                                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: _passwordError != null ? Colors.red : const Color(0xFF534AB7))),
                                   enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: _passwordError != null ? Colors.red : const Color(0xFF534AB7))),
                                   focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF7F77DD), width: 1.5)),
                                 ),
                               ),
-
-                              // Forgot password
                               Align(
                                 alignment: Alignment.centerRight,
                                 child: TextButton(
@@ -362,18 +303,11 @@ class _LoginScreenState extends State<LoginScreen>
                                   child: const Text('Forgot password?', style: TextStyle(color: Color(0xFF7F77DD), fontSize: 12)),
                                 ),
                               ),
-
-                              // Sign in button
                               SizedBox(
-                                width: double.infinity,
-                                height: 46,
+                                width: double.infinity, height: 46,
                                 child: ElevatedButton(
                                   onPressed: _isLoading ? null : _login,
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFF534AB7),
-                                    foregroundColor: Colors.white,
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                  ),
+                                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF534AB7), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
                                   child: _isLoading
                                       ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                                       : const Text('Sign in', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
@@ -383,8 +317,6 @@ class _LoginScreenState extends State<LoginScreen>
                           ),
                         ),
                         const SizedBox(height: 16),
-
-                        // Register link
                         TextButton(
                           onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterScreen())),
                           child: const Text("Don't have an account? Register", style: TextStyle(color: Color(0xFF7F77DD), fontSize: 13)),
@@ -412,7 +344,6 @@ class ParticlePainter extends CustomPainter {
   final List<Particle> particles;
   final double progress;
   ParticlePainter({required this.particles, required this.progress});
-
   @override
   void paint(Canvas canvas, Size size) {
     for (var p in particles) {
@@ -421,7 +352,6 @@ class ParticlePainter extends CustomPainter {
       canvas.drawCircle(Offset(p.x * size.width, currentY * size.height), p.size, paint);
     }
   }
-
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }
@@ -445,7 +375,6 @@ class AvatarPainter extends CustomPainter {
     canvas.drawLine(Offset(center.dx, center.dy - 22), Offset(center.dx, center.dy - 28), antennaPaint);
     canvas.drawCircle(Offset(center.dx, center.dy - 29), 2.5, Paint()..color = const Color(0xFFAFA9EC));
   }
-
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
