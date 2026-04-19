@@ -11,6 +11,7 @@ import 'providers/mood_provider.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/onboarding_screen.dart';
+import 'services/gemini_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
