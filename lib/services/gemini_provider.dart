@@ -6,7 +6,7 @@ class GeminiProvider implements AIProvider {
   @override
   String get name => 'Groq';
 
-static const String _apiKey = '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';
+static const String _apiKey = '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';
 static const String _apiUrl = 'https://integrate.api.nvidia.com/v1/chat/completions';
 static const String _model = 'meta/llama-3.3-70b-instruct';
 
